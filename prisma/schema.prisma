@@ -1,0 +1,216 @@
+// N5Deal marketplace prototype — data model.
+//
+// Design notes:
+//  * Nothing is ever hard-deleted. Moderation flips `status`, which keeps the
+//    audit trail (ModerationAction) and existing conversations intact.
+//  * Money is stored as whole currency units (Int), not minor units: M&A
+//    tickets are quoted in millions, cent precision is noise, and Int keeps
+//    values JSON-serialisable across the server/client boundary (unlike
+//    Decimal / BigInt).
+//  * Sectors / geographies are string arrays validated against a single
+//    taxonomy in src/lib/taxonomy.ts. Lookup tables would be the production
+//    choice; for a prototype a typed, centralised vocabulary buys the same
+//    consistency with far less machinery.
+//  * A Conversation is scoped to an asset, because in M&A every conversation
+//    is about one specific deal.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  BUYER
+  SELLER
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum AssetStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum DealType {
+  FULL_SALE
+  MAJORITY
+  MINORITY
+  ASSET_DEAL
+}
+
+enum InvestorType {
+  STRATEGIC
+  PRIVATE_EQUITY
+  FAMILY_OFFICE
+  SEARCH_FUND
+  ANGEL
+}
+
+enum Visibility {
+  PUBLIC
+  ANONYMOUS
+}
+
+enum ModerationActionType {
+  SUSPEND
+  REINSTATE
+  REMOVE
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  locale       String     @default("en")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  buyerProfile  BuyerProfile?
+  sellerProfile SellerProfile?
+
+  assets                    Asset[]
+  buyerConversations        Conversation[]     @relation("BuyerConversations")
+  sellerConversations       Conversation[]     @relation("SellerConversations")
+  messages                  Message[]
+  moderationActionsMade     ModerationAction[] @relation("ModerationActor")
+  moderationActionsReceived ModerationAction[] @relation("ModerationTargetUser")
+
+  @@index([role, status])
+}
+
+/// A Buyer's investment mandate — the counterpart of an Asset listing.
+model BuyerProfile {
+  id           String       @id @default(cuid())
+  userId       String       @unique
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName  String
+  investorType InvestorType
+  country      String
+  /// Free-text investment thesis, also fed to the AI matcher.
+  thesis       String       @default("")
+  sectors      String[]     @default([])
+  geographies  String[]     @default([])
+  dealTypes    DealType[]   @default([])
+  /// Ticket range in whole units of `currency`. Null = open-ended.
+  ticketMin    Int?
+  ticketMax    Int?
+  currency     String       @default("EUR")
+  /// e.g. "0-3 months" — how fast the buyer wants to transact.
+  timeline     String       @default("")
+  visibility   Visibility   @default(PUBLIC)
+  verified     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([investorType])
+}
+
+model SellerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName String
+  country     String
+  website     String   @default("")
+  about       String   @default("")
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Asset {
+  id           String      @id @default(cuid())
+  sellerId     String
+  seller       User        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  title        String
+  /// One-liner shown on listing cards.
+  summary      String
+  description  String      @default("")
+  sector       String
+  jurisdiction String
+  /// Regulatory licence, the key filter on N5Deal (e.g. "EMI", "MiCA (CASP)").
+  licenseType  String      @default("")
+  dealType     DealType
+  /// Whole units of `currency`; null means "price on request".
+  askingPrice  Int?
+  currency     String      @default("EUR")
+  revenue      Int?
+  ebitda       Int?
+  employees    Int?
+  foundedYear  Int?
+  highlights   String[]    @default([])
+  status       AssetStatus @default(DRAFT)
+  publishedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  conversations     Conversation[]
+  moderationActions ModerationAction[] @relation("ModerationTargetAsset")
+
+  @@index([status, sector])
+  @@index([sellerId, status])
+  @@index([jurisdiction])
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  assetId       String?
+  asset         Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  buyerId       String
+  buyer         User     @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId      String
+  seller        User     @relation("SellerConversations", fields: [sellerId], references: [id], onDelete: Cascade)
+  /// Denormalised for cheap inbox ordering.
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  messages Message[]
+
+  @@unique([assetId, buyerId, sellerId])
+  @@index([buyerId, lastMessageAt])
+  @@index([sellerId, lastMessageAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body           String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// Append-only moderation log. Survives suspension and removal of the target.
+model ModerationAction {
+  id            String               @id @default(cuid())
+  managerId     String
+  manager       User                 @relation("ModerationActor", fields: [managerId], references: [id], onDelete: Cascade)
+  action        ModerationActionType
+  reason        String
+  targetUserId  String?
+  targetUser    User?                @relation("ModerationTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetAssetId String?
+  targetAsset   Asset?               @relation("ModerationTargetAsset", fields: [targetAssetId], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now())
+
+  @@index([createdAt])
+}

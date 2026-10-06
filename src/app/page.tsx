@@ -1,69 +1,82 @@
-import Image from "next/image";
+import { ArrowRight, Building2, ShieldCheck, Sparkles } from "lucide-react";
+import { getI18n } from "@/i18n/server";
+import { getFeaturedAssets, getMarketplaceStats } from "@/lib/queries/assets";
+import { AssetCard } from "@/components/assets/asset-card";
+import { ButtonLink } from "@/components/ui/button";
+import { Badge, Card, Stat } from "@/components/ui/display";
 
-export default function Home() {
+export default async function HomePage() {
+  const { d, locale } = await getI18n();
+  const [stats, featured] = await Promise.all([getMarketplaceStats(), getFeaturedAssets(3)]);
+
+  const pillars = [
+    { icon: Building2, title: d.landing.forSellers, body: d.landing.forSellersBody },
+    { icon: Sparkles, title: d.landing.forBuyers, body: d.landing.forBuyersBody },
+    { icon: ShieldCheck, title: d.landing.forManagers, body: d.landing.forManagersBody },
+  ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div>
+      <section className="hero-grid border-b border-border">
+        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+          <Badge tone="accent">{d.landing.heroBadge}</Badge>
+          <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-5xl">
+            {d.landing.heroTitle}
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+          <p className="mt-4 max-w-2xl text-base text-muted">{d.landing.heroSubtitle}</p>
+
+          <div className="mt-7 flex flex-wrap gap-3">
+            <ButtonLink href="/assets" size="lg">
+              {d.landing.browseAssets}
+              <ArrowRight className="size-4" />
+            </ButtonLink>
+            <ButtonLink href="/demo" variant="secondary" size="lg">
+              {d.landing.tryDemo}
+            </ButtonLink>
+          </div>
+
+          <div className="mt-12 grid max-w-2xl gap-3 sm:grid-cols-3">
+            <Stat label={d.landing.statsAssets} value={stats.assets} />
+            <Stat label={d.landing.statsBuyers} value={stats.buyers} />
+            <Stat label={d.landing.statsJurisdictions} value={stats.jurisdictions} />
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          {d.landing.howItWorks}
+        </h2>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {pillars.map((pillar) => (
+            <Card key={pillar.title} className="flex flex-col gap-2">
+              <pillar.icon className="size-5 text-accent" />
+              <h3 className="text-base font-semibold text-ink">{pillar.title}</h3>
+              <p className="text-sm leading-relaxed text-muted">{pillar.body}</p>
+            </Card>
+          ))}
         </div>
-      </main>
+      </section>
+
+      <section className="border-t border-border bg-surface/30">
+        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+          <div className="flex items-end justify-between gap-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              {d.landing.featured}
+            </h2>
+            <ButtonLink href="/assets" variant="ghost" size="sm">
+              {d.landing.viewAll}
+              <ArrowRight className="size-4" />
+            </ButtonLink>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {featured.map((asset) => (
+              <AssetCard key={asset.id} asset={asset} d={d} locale={locale} />
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
